@@ -64,6 +64,33 @@ class ConfigOptions;
 */
 typedef redisReply ReplyElem;
 
+/*!
+*  \brief Resolved placement information for a Redis key
+*/
+struct KeyLocation
+{
+    std::string key;
+    uint16_t hash_slot = 0;
+    bool is_cluster = false;
+    std::string shard_address;
+    std::string shard_name;
+    std::string shard_prefix;
+    uint64_t shard_slot_first = 0;
+    uint64_t shard_slot_last = 0;
+};
+
+/*!
+*  \brief Placement metadata for a Redis cluster shard
+*/
+struct ClusterShardInfo
+{
+    std::string shard_address;
+    std::string shard_name;
+    std::string shard_prefix;
+    uint64_t shard_slot_first = 0;
+    uint64_t shard_slot_last = 0;
+};
+
 ///@file
 /*!
 *   \brief The Client class is the primary user-facing
@@ -1165,6 +1192,32 @@ class Client : public SRObject
         *          being thrown.
         */
         parsed_reply_map get_db_cluster_info(const std::string address);
+
+        /*!
+        *   \brief Resolve the fully formatted tensor key and shard placement
+        *          that SmartRedis will use for a tensor operation.
+        *   \param name The logical tensor name
+        *   \param on_db If true, resolve the key as it is read from Redis;
+        *                otherwise resolve the key as it is written
+        *   \returns KeyLocation for the tensor key
+        */
+        KeyLocation get_tensor_key_location(const std::string& name,
+                                            bool on_db = false);
+
+        /*!
+        *   \brief Resolve shard placement information for a fully formatted
+        *          Redis key.
+        *   \param key The full Redis key
+        *   \returns KeyLocation for the key
+        */
+        KeyLocation get_key_location(const std::string& key);
+
+        /*!
+        *   \brief Retrieve the cluster shard layout known to this client.
+        *   \returns A vector of shard metadata. Returns an empty vector for
+        *            standalone Redis deployments.
+        */
+        std::vector<ClusterShardInfo> get_cluster_shards();
 
         /*!
         *   \brief Returns the response from an AI.INFO command sent to

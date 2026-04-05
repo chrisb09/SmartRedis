@@ -179,6 +179,19 @@ class RedisCluster : public RedisServer
         run_via_unordered_pipelines(CommandList& cmd_list);
 
         /*!
+        *   \brief Resolve the database node responsible for a key
+        *   \param key The fully formatted Redis key
+        *   \returns DBNode metadata for the owning shard
+        */
+        DBNode get_db_node_for_key(const std::string& key);
+
+        /*!
+        *   \brief Retrieve the cluster DB node metadata
+        *   \returns A copy of the current DB node table
+        */
+        std::vector<DBNode> get_db_nodes() const;
+
+        /*!
         *   \brief Check if a key exists in the database. This function does
         *          not work for models and scripts. For models and scripts,
         *          model_key_exists should be used.

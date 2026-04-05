@@ -33,6 +33,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <sw/redis++/redis++.h>
 #include "client.h"
 #include "srexception.h"
 #include "logger.h"
@@ -40,6 +41,35 @@
 #include "configoptions.h"
 
 using namespace SmartRedis;
+
+namespace {
+
+bool has_hash_tag(const std::string& key)
+{
+    const size_t first = key.find('{');
+    const size_t second = key.find('}');
+    return (first != std::string::npos &&
+            second != std::string::npos &&
+            second > first);
+}
+
+std::string get_hash_tag(const std::string& key)
+{
+    if (!has_hash_tag(key))
+        return key;
+
+    const size_t first = key.find('{');
+    const size_t second = key.find('}');
+    return key.substr(first + 1, second - first - 1);
+}
+
+uint16_t compute_hash_slot(const std::string& key)
+{
+    const std::string hash_key = get_hash_tag(key);
+    return sw::redis::crc16(hash_key.c_str(), hash_key.size()) % 16384;
+}
+
+} // namespace
 
 // Simple Client constructor
 Client::Client(const char* logger_name)
@@ -1452,6 +1482,61 @@ parsed_reply_map Client::get_db_cluster_info(const std::string address)
     // Parse the results
     std::string db_cluster_info(reply.str(), reply.str_len());
     return ClusterInfoCommand::parse_db_cluster_info(db_cluster_info);
+}
+
+KeyLocation Client::get_tensor_key_location(const std::string& name, bool on_db)
+{
+    // Track calls to this API function
+    LOG_API_FUNCTION();
+
+    return get_key_location(_build_tensor_key(name, on_db));
+}
+
+KeyLocation Client::get_key_location(const std::string& key)
+{
+    // Track calls to this API function
+    LOG_API_FUNCTION();
+
+    KeyLocation location;
+    location.key = key;
+    location.hash_slot = compute_hash_slot(key);
+    location.is_cluster = (_redis_cluster != NULL);
+
+    if (_redis_cluster != NULL) {
+        const DBNode db_node = _redis_cluster->get_db_node_for_key(key);
+        location.shard_address = db_node.address.to_string();
+        location.shard_name = db_node.name;
+        location.shard_prefix = db_node.prefix;
+        location.shard_slot_first = db_node.lower_hash_slot;
+        location.shard_slot_last = db_node.upper_hash_slot;
+    }
+
+    return location;
+}
+
+std::vector<ClusterShardInfo> Client::get_cluster_shards()
+{
+    // Track calls to this API function
+    LOG_API_FUNCTION();
+
+    std::vector<ClusterShardInfo> shards;
+    if (_redis_cluster == NULL) {
+        return shards;
+    }
+
+    const std::vector<DBNode> db_nodes = _redis_cluster->get_db_nodes();
+    shards.reserve(db_nodes.size());
+    for (const DBNode& db_node : db_nodes) {
+        ClusterShardInfo shard;
+        shard.shard_address = db_node.address.to_string();
+        shard.shard_name = db_node.name;
+        shard.shard_prefix = db_node.prefix;
+        shard.shard_slot_first = db_node.lower_hash_slot;
+        shard.shard_slot_last = db_node.upper_hash_slot;
+        shards.push_back(std::move(shard));
+    }
+
+    return shards;
 }
 
 // Returns the AI.INFO command reply

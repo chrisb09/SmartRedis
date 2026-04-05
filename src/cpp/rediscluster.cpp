@@ -318,6 +318,17 @@ PipelineReply RedisCluster::run_via_unordered_pipelines(CommandList& cmd_list)
     return all_replies;
 }
 
+DBNode RedisCluster::get_db_node_for_key(const std::string& key)
+{
+    const uint16_t db_index = _get_db_node_index(key);
+    return _db_nodes.at(db_index);
+}
+
+std::vector<DBNode> RedisCluster::get_db_nodes() const
+{
+    return _db_nodes;
+}
+
 // Check if a model or script key exists in the database
 bool RedisCluster::model_key_exists(const std::string& key)
 {
@@ -1592,5 +1603,3 @@ std::string RedisCluster::to_string() const
     result += RedisServer::to_string();
     return result;
 }
-
-
